@@ -2,16 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.controllers.auth_controller import auth_router
+from app.controllers.rfq_controller import rfq_router
+from app.controllers.bid_controller import bid_router
 from app.core.config import settings
 from app.database.base import Base
 from app.database.session import engine
-from app.models.user import User  # noqa: F401 – needed so SQLAlchemy sees the table
+from app.models.user import User  # noqa: F401
+from app.models.rfq import RFQ, AuctionConfig, Bid  # noqa: F401
 
 app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5175"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,3 +32,5 @@ def health():
 
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(rfq_router, prefix="/api")
+app.include_router(bid_router, prefix="/api")
