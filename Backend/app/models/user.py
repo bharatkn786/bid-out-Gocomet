@@ -1,23 +1,23 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
-
+from sqlalchemy import Column, Integer, String, DateTime, Enum
 from app.database.base import Base
 
 
-class UserRole(str, enum.Enum):
+# -------- ENUM --------
+class UserRole(enum.Enum):
     buyer = "buyer"
     seller = "seller"
 
 
+# -------- USER TABLE --------
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    full_name = Column(String(120), nullable=False)
+    role = Column(Enum(UserRole), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
