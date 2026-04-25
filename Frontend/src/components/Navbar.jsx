@@ -1,6 +1,15 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 function Nav({ currentUser, onLogoutClick }) {
+  const navigate = useNavigate()
+
+  function handleRequestQuotation(e) {
+    if (!currentUser) {
+      e.preventDefault()
+      navigate('/login')
+    }
+  }
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur">
       <nav className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -17,7 +26,6 @@ function Nav({ currentUser, onLogoutClick }) {
               <path d="M14 27V13H21C24.866 13 28 15.91 28 19.5C28 23.09 24.866 26 21 26H18" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-
           <p className="text-4xl leading-none font-extrabold tracking-tight text-slate-800">Bid Out</p>
         </div>
 
@@ -25,6 +33,15 @@ function Nav({ currentUser, onLogoutClick }) {
           <Link className="transition-colors hover:text-rose-500" to="/">Home</Link>
           <a className="transition-colors hover:text-rose-500" href="#">Auctions</a>
           <a className="transition-colors hover:text-rose-500" href="#">Contact</a>
+          {(!currentUser || currentUser.role === 'buyer') && (
+            <Link
+              to="/rfq/create"
+              onClick={handleRequestQuotation}
+              className="ml-2 flex items-center gap-1.5 rounded-lg bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600"
+            >
+              Request Quotation
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

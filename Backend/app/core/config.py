@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_name: str = "Bid Out API"
     secret_key: str
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 5
+    access_token_expire_minutes: int = 15
     database_url: str
 
     # Email config

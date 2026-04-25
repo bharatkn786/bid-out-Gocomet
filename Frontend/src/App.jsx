@@ -3,14 +3,29 @@ import { useAuth } from './hooks/useAuth'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import CreateRFQ from './pages/CreateRFQ'
+import RFQAuction from './pages/RFQAuction'
 
 function App() {
-  const { currentUser, login, signup, verifyOtp, handleAuthSuccess, handleLogout } = useAuth()
+  const { currentUser, isLoading, login, signup, verifyOtp, handleAuthSuccess, handleLogout } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-rose-500 border-t-transparent"></div>
+      </div>
+    )
+  }
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home currentUser={currentUser} onLogoutClick={handleLogout} />} />
+        <Route
+          path="/"
+          element={
+            <Home currentUser={currentUser} onLogoutClick={handleLogout} />
+          }
+        />
         <Route
           path="/login"
           element={
@@ -25,6 +40,26 @@ function App() {
             currentUser
               ? <Navigate to="/" replace />
               : <Signup onSignup={signup} />
+          }
+        />
+        <Route
+          path="/rfq/create"
+          element={
+            !currentUser ? (
+              <Navigate to="/login" replace />
+            ) : currentUser.role === 'buyer' ? (
+              <CreateRFQ currentUser={currentUser} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/rfq/:id"
+          element={
+            currentUser
+              ? <RFQAuction currentUser={currentUser} />
+              : <Navigate to="/login" replace />
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -8,8 +8,8 @@ class CreateBidRequest(BaseModel):
     freight_charges: float = Field(gt=0)
     origin_charges: float = Field(ge=0)
     destination_charges: float = Field(ge=0)
-    transit_time: int = Field(gt=0, description="Transit time in days")
-    quote_validity: int = Field(gt=0, description="Quote validity in days")
+    transit_time: int = Field(gt=0)
+    quote_validity: int = Field(gt=0)
 
 
 class BidResponse(BaseModel):

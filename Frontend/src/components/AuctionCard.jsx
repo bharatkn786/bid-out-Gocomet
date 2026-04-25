@@ -5,13 +5,17 @@ function AuctionCard({ rfq, isLive, currentUser, setToast }) {
   const startDate = new Date(rfq.bid_start_at)
   const closeDate = new Date(rfq.bid_close_at)
 
-  function handleBidClick(e) {
-    if (isLive && currentUser?.role === 'buyer') {
+  function handleClick(e) {
+    // Not logged in → go to login
+    if (!currentUser) {
       e.preventDefault()
-      setToast({
-        message: 'buyer himself cannot place bid for placing bid make a slller accounnt and place your bids',
-        type: 'error'
-      })
+      navigate('/login')
+      return
+    }
+    // Buyer cannot place bids on live auctions
+    if (isLive && currentUser.role === 'buyer') {
+      e.preventDefault()
+      setToast({ message: 'Buyers cannot place bids. Please create a seller account to place your bids.', type: 'error' })
     }
   }
 
@@ -48,7 +52,7 @@ function AuctionCard({ rfq, isLive, currentUser, setToast }) {
 
         <Link
           to={`/rfq/${rfq.id}`}
-          onClick={handleBidClick}
+          onClick={handleClick}
           className={`block w-full rounded-xl py-3 text-center text-sm font-bold transition-all ${
             isLive
               ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-md shadow-rose-500/20'

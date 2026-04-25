@@ -4,19 +4,25 @@ import { fetchMe, login, signup, verifyOtp } from '../services/authApi'
 export function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('auth_token') || '')
   const [currentUser, setCurrentUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (!token) {
       setCurrentUser(null)
+      setIsLoading(false)
       return
     }
 
+    setIsLoading(true)
     fetchMe(token)
       .then(setCurrentUser)
       .catch(() => {
         localStorage.removeItem('auth_token')
         setToken('')
         setCurrentUser(null)
+      })
+      .finally(() => {
+        setIsLoading(false)
       })
   }, [token])
 
@@ -32,5 +38,5 @@ export function useAuth() {
     setCurrentUser(null)
   }
 
-  return { currentUser, login, signup, verifyOtp, handleAuthSuccess, handleLogout }
+  return { currentUser, isLoading, login, signup, verifyOtp, handleAuthSuccess, handleLogout }
 }

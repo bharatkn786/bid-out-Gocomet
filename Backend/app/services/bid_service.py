@@ -1,32 +1,30 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.rfq import RFQ, Bid, RFQStatus
+from app.models.rfq import RFQ, Bid
 from app.models.user import UserRole, User
 from app.schemas.bid import CreateBidRequest, BidResponse
 
 
 def place_bid(db: Session, payload: CreateBidRequest, user: User) -> BidResponse:
-    # Requirement: Buyer cannot place bids
+    # Buyer cannot place bids
     if user.role == UserRole.buyer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="buyer himself cannot place bid for placing bid make a slller accounnt and place your bids"
+            detail="Buyers cannot place bids. Please create a seller account to place your bids."
         )
 
-    # Check if RFQ exists and is active
+    # Check if RFQ exists
     rfq = db.query(RFQ).filter(RFQ.id == payload.rfq_id).first()
     if not rfq:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
-    
-    # Simple check for active status (can be expanded with time checks)
-    if rfq.status != RFQStatus.active:
-        # For the sake of this task, we'll assume it needs to be active
-        # but let's check the time as well
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        if not (rfq.bid_start_at <= now <= rfq.bid_close_at):
-             raise HTTPException(status.HTTP_400_BAD_REQUEST, "RFQ is not currently accepting bids")
+
+    # Check if RFQ is currently accepting bids
+    now = datetime.now(timezone.utc)
+    if not (rfq.bid_start_at <= now <= rfq.bid_close_at):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "RFQ is not currently accepting bids")
 
     bid = Bid(
         rfq_id=payload.rfq_id,

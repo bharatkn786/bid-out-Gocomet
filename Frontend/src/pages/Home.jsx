@@ -11,10 +11,7 @@ function Home({ currentUser, onLogoutClick }) {
 
   useEffect(() => {
     listRFQs()
-      .then(data => {
-        // Sort by start time descending or ascending as needed
-        setRfqs(data)
-      })
+      .then(setRfqs)
       .catch(console.error)
       .finally(() => setIsLoading(false))
   }, [])
@@ -30,7 +27,6 @@ function Home({ currentUser, onLogoutClick }) {
   const now = new Date()
   const liveRFQs = rfqs.filter(r => new Date(r.bid_start_at) <= now && new Date(r.bid_close_at) > now)
   const upcomingRFQs = rfqs.filter(r => new Date(r.bid_start_at) > now)
-  const closedRFQs = rfqs.filter(r => new Date(r.bid_close_at) <= now) // optional, keeping it simple
 
   return (
     <div className="relative min-h-screen bg-slate-50 font-sans">
