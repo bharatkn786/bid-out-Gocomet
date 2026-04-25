@@ -1,8 +1,9 @@
 import random
+
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.email import send_otp_email
@@ -13,14 +14,23 @@ from app.schemas.auth import LoginRequest, SignupRequest, TokenResponse, UserRes
 # Simple in-memory store for OTPs (email -> otp)
 otp_store: dict[str, str] = {}
 
-# 👉 payload is the data sent by the user (request body)
-# 👉 payload.email is the email field inside that data
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    return db.query(User).filter(User.email == email).first()
+
+
+def build_token_response(user: User) -> TokenResponse:
+    token = create_access_token(subject=str(user.id))
+    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+
+
 def signup(db: Session, payload: SignupRequest) -> TokenResponse:
-    # Normalize email
-    email = payload.email.lower()
-    
-    # Optional: Quick check before hitting DB unique constraint
-    if db.query(User).filter(User.email == email).first():
+    email = normalize_email(payload.email)
+    if get_user_by_email(db, email):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
 
     user = User(
@@ -38,46 +48,40 @@ def signup(db: Session, payload: SignupRequest) -> TokenResponse:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered (race condition)")
 
-    token = create_access_token(subject=str(user.id))
-    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+    return build_token_response(user)
 
 
 async def login(db: Session, payload: LoginRequest):
-    # Normalize email for login too
-    email = payload.email.lower()
-    
-    user = db.query(User).filter(User.email == email).first()
+    email = normalize_email(payload.email)
+    user = get_user_by_email(db, email)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
 
     # Generate a 6-digit OTP
     otp = str(random.randint(100000, 999999))
     otp_store[email] = otp
-    print(f"--- OTP for {email} is: {otp} ---") # For easy testing
+    print(f"--- OTP for {email} is: {otp} ---")
     
     try:
         await send_otp_email(email, otp)
     except Exception as e:
         print(f"Failed to send email: {e}")
-        # In a real app, you might want to handle this better
-        # For now, we still return success but maybe the user can check terminal
 
     return {"message": "OTP sent successfully", "email": email}
 
 def verify_otp(db: Session, email: str, otp: str) -> TokenResponse:
-    email = email.lower()
+    email = normalize_email(email)
     if otp_store.get(email) != otp:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired OTP")
 
     # Clear OTP after successful use
     del otp_store[email]
 
-    user = db.query(User).filter(User.email == email).first()
+    user = get_user_by_email(db, email)
     if not user:
-         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
-    token = create_access_token(subject=str(user.id))
-    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+    return build_token_response(user)
 
 
 def get_user_by_token(db: Session, token: str) -> User:

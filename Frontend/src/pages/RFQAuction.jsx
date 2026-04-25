@@ -15,6 +15,31 @@ const emptyForm = {
   quote_validity: '',
 }
 
+function buildWsUrl(rfqId) {
+  const wsBaseUrl = API_BASE_URL.replace('http', 'ws')
+  return `${wsBaseUrl}/rfq/ws/${rfqId}`
+}
+
+function buildBidPayload(form, rfqId) {
+  return {
+    rfq_id: parseInt(rfqId),
+    carrier_name: form.carrier_name,
+    freight_charges: parseFloat(form.freight_charges),
+    origin_charges: parseFloat(form.origin_charges),
+    destination_charges: parseFloat(form.destination_charges),
+    transit_time: parseInt(form.transit_time),
+    quote_validity: parseInt(form.quote_validity),
+  }
+}
+
+function isAuctionClosed(detail, timeLeft) {
+  return timeLeft === 'CLOSED' || (detail && new Date(detail.rfq.bid_close_at) <= new Date())
+}
+
+function isClosingSoon(detail, isClosed) {
+  return !isClosed && detail && (new Date(detail.rfq.bid_close_at) - new Date()) < 120000
+}
+
 // Countdown timer: counts down to bid_close_at
 function useCountdown(bid_close_at) {
   const [timeLeft, setTimeLeft] = useState('')
@@ -62,9 +87,8 @@ function RFQAuction({ currentUser, onLogoutClick }) {
   // WebSocket — reconnects when id changes
   useEffect(() => {
     // Construct ws://localhost:8000/api/rfq/ws/8
-    const wsUrl = API_BASE_URL.replace('http', 'ws')
-    const ws = new WebSocket(`${wsUrl}/rfq/ws/${id}`)
-    
+    const ws = new WebSocket(buildWsUrl(id))
+
     wsRef.current = ws
     ws.onmessage = () => fetchDetail()
     ws.onerror = () => console.warn('WebSocket error connection to:', ws.url)
@@ -78,8 +102,8 @@ function RFQAuction({ currentUser, onLogoutClick }) {
 
   const timeLeft = useCountdown(detail?.rfq?.bid_close_at)
   // Check synchronously so it doesn't wait for the useEffect tick
-  const isClosed = timeLeft === 'CLOSED' || (detail && new Date(detail.rfq.bid_close_at) <= new Date())
-  const isRed = !isClosed && detail && (new Date(detail.rfq.bid_close_at) - new Date()) < 120000
+  const isClosed = isAuctionClosed(detail, timeLeft)
+  const isRed = isClosingSoon(detail, isClosed)
 
   // Show buyer restriction toast on load, only if auction is active
   useEffect(() => {
@@ -98,15 +122,7 @@ function RFQAuction({ currentUser, onLogoutClick }) {
     setIsLoading(true)
     try {
       const token = localStorage.getItem('auth_token')
-      await placeBid({
-        rfq_id: parseInt(id),
-        carrier_name: form.carrier_name,
-        freight_charges: parseFloat(form.freight_charges),
-        origin_charges: parseFloat(form.origin_charges),
-        destination_charges: parseFloat(form.destination_charges),
-        transit_time: parseInt(form.transit_time),
-        quote_validity: parseInt(form.quote_validity),
-      }, token)
+      await placeBid(buildBidPayload(form, id), token)
       setToast({ message: 'Bid placed successfully!', type: 'success' })
       setForm(emptyForm)
     } catch (err) {
@@ -261,41 +277,41 @@ function RFQAuction({ currentUser, onLogoutClick }) {
               <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
                 <h2 className="font-bold text-slate-900">Place Your Bid</h2>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-bold text-slate-700">Carrier Name</label>
-                <input name="carrier_name" type="text" required disabled={isBuyer || isClosed} placeholder="e.g. Blue Dart" className={inputCls} value={form.carrier_name} onChange={handleChange} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Freight ($)</label>
-                  <input name="freight_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.freight_charges} onChange={handleChange} />
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Carrier Name</label>
+                  <input name="carrier_name" type="text" required disabled={isBuyer || isClosed} placeholder="e.g. Blue Dart" className={inputCls} value={form.carrier_name} onChange={handleChange} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Freight ($)</label>
+                    <input name="freight_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.freight_charges} onChange={handleChange} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Origin ($)</label>
+                    <input name="origin_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.origin_charges} onChange={handleChange} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Destination ($)</label>
+                    <input name="destination_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.destination_charges} onChange={handleChange} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Transit (days)</label>
+                    <input name="transit_time" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 5" className={inputCls} value={form.transit_time} onChange={handleChange} />
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Origin ($)</label>
-                  <input name="origin_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.origin_charges} onChange={handleChange} />
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Quote Validity (days)</label>
+                  <input name="quote_validity" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 30" className={inputCls} value={form.quote_validity} onChange={handleChange} />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Destination ($)</label>
-                  <input name="destination_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.destination_charges} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Transit (days)</label>
-                  <input name="transit_time" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 5" className={inputCls} value={form.transit_time} onChange={handleChange} />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-bold text-slate-700">Quote Validity (days)</label>
-                <input name="quote_validity" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 30" className={inputCls} value={form.quote_validity} onChange={handleChange} />
-              </div>
 
-              <button
-                type="submit"
-                disabled={isLoading || isBuyer}
-                className="w-full rounded-xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBuyer ? 'Bidding Restricted for Buyers' : isLoading ? 'Submitting...' : 'Submit Bid'}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={isLoading || isBuyer}
+                  className="w-full rounded-xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBuyer ? 'Bidding Restricted for Buyers' : isLoading ? 'Submitting...' : 'Submit Bid'}
+                </button>
+              </form>
             )}
           </div>
 

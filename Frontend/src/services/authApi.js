@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8000/api'
+import { API_BASE_URL } from './api'
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {

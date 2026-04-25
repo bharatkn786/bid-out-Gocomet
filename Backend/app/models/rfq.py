@@ -1,8 +1,18 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
+
 from app.database.base import Base
 
 
@@ -82,9 +92,8 @@ class Bid(Base):
     rfq = relationship("RFQ", back_populates="bids")
     supplier = relationship("User")
 
-    # easy function instead of property
     @property
-    def total_charges(self):
+    def total_charges(self) -> float:
         return self.freight_charges + self.origin_charges + self.destination_charges
 
 

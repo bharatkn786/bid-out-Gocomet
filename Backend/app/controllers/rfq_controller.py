@@ -20,6 +20,13 @@ def get_current_buyer(token: str = Depends(oauth2_scheme), db: Session = Depends
     return user
 
 
+def get_rfq_or_404(db: Session, rfq_id: int) -> RFQ:
+    rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
+    if not rfq:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
+    return rfq
+
+
 @rfq_router.post("/create", response_model=RFQResponse)
 def create_rfq(payload: CreateRFQRequest, buyer=Depends(get_current_buyer), db: Session = Depends(get_db)):
     return rfq_service.create_rfq(db, payload, buyer_id=buyer.id)
@@ -32,19 +39,15 @@ def list_rfqs(db: Session = Depends(get_db)):
 
 @rfq_router.get("/{rfq_id}", response_model=RFQResponse)
 def get_rfq(rfq_id: int, db: Session = Depends(get_db)):
-    rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
-    if not rfq:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
+    rfq = get_rfq_or_404(db, rfq_id)
     return RFQResponse.model_validate(rfq)
 
 
 @rfq_router.get("/{rfq_id}/detail", response_model=AuctionDetailResponse)
 def get_rfq_detail(rfq_id: int, db: Session = Depends(get_db)):
-    rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
-    if not rfq:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
+    rfq = get_rfq_or_404(db, rfq_id)
 
-    # Build ranked bids: best bid per supplier, sorted by total_charges
+    # Build ranked bids: best bid per supplier, sorted by total_charges.
     all_bids = db.query(Bid).filter(Bid.rfq_id == rfq_id).all()
     best: dict[int, Bid] = {}
     for bid in all_bids:

@@ -16,7 +16,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 @bid_router.post("/place", response_model=BidResponse)
-async def place_bid(payload: CreateBidRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+async def place_bid(
+    payload: CreateBidRequest,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return await bid_service.place_bid(db, payload, user)
 
 
@@ -26,6 +30,7 @@ def list_bids(rfq_id: int, db: Session = Depends(get_db)):
 
 @bid_router.get("/my-rfqs", response_model=list[int])
 def get_my_bidded_rfqs(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    # Keep the response small: only unique RFQ ids.
     bids = db.query(Bid.rfq_id).filter(Bid.supplier_id == user.id).distinct().all()
-    return [b[0] for b in bids]
+    return [bid_id for (bid_id,) in bids]
 

@@ -5,13 +5,24 @@ import Toast from '../components/Toast'
 import { listRFQs } from '../services/rfqApi'
 import { getMyBiddedRFQs } from '../services/bidApi'
 
+function isLive(rfq, now) {
+  return new Date(rfq.bid_start_at) <= now && new Date(rfq.bid_close_at) > now
+}
+
+function isUpcoming(rfq, now) {
+  return new Date(rfq.bid_start_at) > now
+}
+
+function isClosed(rfq, now) {
+  return new Date(rfq.bid_close_at) <= now
+}
+
 function Home({ currentUser, onLogoutClick }) {
   const [rfqs, setRfqs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [toast, setToast] = useState(null)
   const [showOnlyMine, setShowOnlyMine] = useState(false)
   const [myBiddedIds, setMyBiddedIds] = useState([])
-
 
   useEffect(() => {
     listRFQs()
@@ -37,17 +48,13 @@ function Home({ currentUser, onLogoutClick }) {
   }, [currentUser])
 
   const now = new Date()
-  
-  // Filter based on toggle
   const filteredRFQs = showOnlyMine
     ? rfqs.filter(r => currentUser?.role === 'buyer' ? r.created_by === currentUser.id : myBiddedIds.includes(r.id))
-    : rfqs;
+    : rfqs
 
-  const liveRFQs = filteredRFQs.filter(r => new Date(r.bid_start_at) <= now && new Date(r.bid_close_at) > now)
-  const upcomingRFQs = filteredRFQs.filter(r => new Date(r.bid_start_at) > now)
-  const closedRFQs = filteredRFQs.filter(r => new Date(r.bid_close_at) <= now)
-
-
+  const liveRFQs = filteredRFQs.filter(r => isLive(r, now))
+  const upcomingRFQs = filteredRFQs.filter(r => isUpcoming(r, now))
+  const closedRFQs = filteredRFQs.filter(r => isClosed(r, now))
 
   return (
     <div className="relative min-h-screen bg-slate-50 font-sans">

@@ -15,6 +15,32 @@ const initialForm = {
   trigger_type: 'bid_received',
 }
 
+function validateTimes(form) {
+  if (new Date(form.forced_close_at) <= new Date(form.bid_close_at)) {
+    return 'Forced close time must be later than bid close time'
+  }
+  if (new Date(form.bid_close_at) <= new Date(form.bid_start_at)) {
+    return 'Bid close time must be later than bid start time'
+  }
+  return ''
+}
+
+function buildPayload(form) {
+  return {
+    name: form.name,
+    description: form.description,
+    bid_start_at: new Date(form.bid_start_at).toISOString(),
+    bid_close_at: new Date(form.bid_close_at).toISOString(),
+    forced_close_at: new Date(form.forced_close_at).toISOString(),
+    pickup_date: new Date(form.pickup_date).toISOString(),
+    auction_config: {
+      trigger_window_minutes: Number(form.trigger_window_minutes),
+      extension_duration_minutes: Number(form.extension_duration_minutes),
+      trigger_type: form.trigger_type,
+    },
+  }
+}
+
 function CreateRFQ({ currentUser, onLogoutClick }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
@@ -30,29 +56,13 @@ function CreateRFQ({ currentUser, onLogoutClick }) {
     e.preventDefault()
     setError('')
 
-    if (new Date(form.forced_close_at) <= new Date(form.bid_close_at)) {
-      return setError('Forced close time must be later than bid close time')
-    }
-    if (new Date(form.bid_close_at) <= new Date(form.bid_start_at)) {
-      return setError('Bid close time must be later than bid start time')
-    }
+    const timeError = validateTimes(form)
+    if (timeError) return setError(timeError)
 
     setIsLoading(true)
     try {
       const token = localStorage.getItem('auth_token')
-      await createRFQ({
-        name: form.name,
-        description: form.description,
-        bid_start_at: new Date(form.bid_start_at).toISOString(),
-        bid_close_at: new Date(form.bid_close_at).toISOString(),
-        forced_close_at: new Date(form.forced_close_at).toISOString(),
-        pickup_date: new Date(form.pickup_date).toISOString(),
-        auction_config: {
-          trigger_window_minutes: Number(form.trigger_window_minutes),
-          extension_duration_minutes: Number(form.extension_duration_minutes),
-          trigger_type: form.trigger_type,
-        },
-      }, token)
+      await createRFQ(buildPayload(form), token)
       navigate('/')
     } catch (err) {
       try {
@@ -60,7 +70,7 @@ function CreateRFQ({ currentUser, onLogoutClick }) {
         if (Array.isArray(details)) {
           return setError(`Validation Error: ${details.map(d => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(', ')}`)
         }
-      } catch {}
+      } catch { }
       setError(err.message)
     } finally {
       setIsLoading(false)

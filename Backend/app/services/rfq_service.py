@@ -5,14 +5,15 @@ from app.models.rfq import AuctionConfig, RFQ, RFQStatus
 from app.schemas.rfq import CreateRFQRequest, RFQResponse
 
 
-def create_rfq(db: Session, payload: CreateRFQRequest, buyer_id: int) -> RFQResponse:
-    # Validation: forced close must be after bid close
+def validate_rfq_times(payload: CreateRFQRequest) -> None:
     if payload.forced_close_at <= payload.bid_close_at:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Forced close time must be after bid close time")
-
-    # Validation: bid close must be after bid start
     if payload.bid_close_at <= payload.bid_start_at:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bid close time must be after bid start time")
+
+
+def create_rfq(db: Session, payload: CreateRFQRequest, buyer_id: int) -> RFQResponse:
+    validate_rfq_times(payload)
 
     rfq = RFQ(
         name=payload.name,
@@ -27,7 +28,6 @@ def create_rfq(db: Session, payload: CreateRFQRequest, buyer_id: int) -> RFQResp
     db.add(rfq)
     db.flush()  # Get rfq.id
 
-    # Auto-generate reference_id based on incrementing ID
     rfq.reference_id = f"RFQ-{rfq.id:04d}"
 
     config = AuctionConfig(
