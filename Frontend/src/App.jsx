@@ -48,7 +48,7 @@ function App() {
             !currentUser ? (
               <Navigate to="/login" replace />
             ) : currentUser.role === 'buyer' ? (
-              <CreateRFQ currentUser={currentUser} />
+              <CreateRFQ currentUser={currentUser} onLogoutClick={handleLogout} />
             ) : (
               <Navigate to="/" replace />
             )
@@ -58,7 +58,7 @@ function App() {
           path="/rfq/:id"
           element={
             currentUser
-              ? <RFQAuction currentUser={currentUser} />
+              ? <RFQAuction currentUser={currentUser} onLogoutClick={handleLogout} />
               : <Navigate to="/login" replace />
           }
         />

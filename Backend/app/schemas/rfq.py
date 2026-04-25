@@ -31,6 +31,7 @@ class RFQResponse(BaseModel):
     pickup_date: datetime
     status: RFQStatus
     created_at: datetime
+    current_lowest_bid: float | None = None
 
     class Config:
         from_attributes = True

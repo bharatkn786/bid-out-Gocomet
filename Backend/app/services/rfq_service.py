@@ -45,4 +45,10 @@ def create_rfq(db: Session, payload: CreateRFQRequest, buyer_id: int) -> RFQResp
 
 def list_rfqs(db: Session) -> list[RFQResponse]:
     rfqs = db.query(RFQ).order_by(RFQ.created_at.desc()).all()
-    return [RFQResponse.model_validate(r) for r in rfqs]
+    results = []
+    for r in rfqs:
+        resp = RFQResponse.model_validate(r)
+        if r.bids:
+            resp.current_lowest_bid = min(b.total_charges for b in r.bids)
+        results.append(resp)
+    return results

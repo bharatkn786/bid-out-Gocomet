@@ -33,7 +33,7 @@ function useCountdown(bid_close_at) {
   return timeLeft
 }
 
-function RFQAuction({ currentUser }) {
+function RFQAuction({ currentUser, onLogoutClick }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [detail, setDetail] = useState(null)
@@ -61,27 +61,32 @@ function RFQAuction({ currentUser }) {
 
   // WebSocket — reconnects when id changes
   useEffect(() => {
-    const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
-    const ws = new WebSocket(`${wsUrl}/api/rfq/ws/${id}`)
+    // Construct ws://localhost:8000/api/rfq/ws/8
+    const wsUrl = API_BASE_URL.replace('http', 'ws')
+    const ws = new WebSocket(`${wsUrl}/rfq/ws/${id}`)
+    
     wsRef.current = ws
+    ws.onmessage = () => fetchDetail()
+    ws.onerror = () => console.warn('WebSocket error connection to:', ws.url)
 
-    ws.onmessage = () => fetchDetail()  // on any event, refresh data
-
-    ws.onerror = () => console.warn('WebSocket error')
-
-    return () => ws.close()
+    return () => {
+      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+        ws.close()
+      }
+    }
   }, [id])
 
-  // Show buyer restriction toast on load
+  const timeLeft = useCountdown(detail?.rfq?.bid_close_at)
+  // Check synchronously so it doesn't wait for the useEffect tick
+  const isClosed = timeLeft === 'CLOSED' || (detail && new Date(detail.rfq.bid_close_at) <= new Date())
+  const isRed = !isClosed && detail && (new Date(detail.rfq.bid_close_at) - new Date()) < 120000
+
+  // Show buyer restriction toast on load, only if auction is active
   useEffect(() => {
-    if (isBuyer) {
+    if (detail && isBuyer && !isClosed) {
       setToast({ message: 'Buyers cannot place bids. Please create a seller account.', type: 'error' })
     }
-  }, [isBuyer])
-
-  const timeLeft = useCountdown(detail?.rfq?.bid_close_at)
-  const isClosed = timeLeft === 'CLOSED'
-  const isRed = !isClosed && detail && (new Date(detail.rfq.bid_close_at) - new Date()) < 120000
+  }, [detail, isBuyer, isClosed])
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -124,7 +129,7 @@ function RFQAuction({ currentUser }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar currentUser={currentUser} />
+      <Navbar currentUser={currentUser} onLogoutClick={onLogoutClick} />
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <main className="mx-auto max-w-6xl px-4 py-8">
@@ -179,16 +184,21 @@ function RFQAuction({ currentUser }) {
               ) : (
                 <div className="divide-y divide-slate-100">
                   {bids.map((bid, i) => (
-                    <div key={i} className={`flex items-center gap-4 px-6 py-4 ${i === 0 ? 'bg-rose-50/50' : ''}`}>
-                      <span className="text-2xl">{rankEmoji[i] || `#${bid.rank}`}</span>
+                    <div key={i} className={`flex items-center gap-4 px-6 py-4 ${i === 0 ? (isClosed ? 'bg-green-50/50' : 'bg-rose-50/50') : ''}`}>
+                      <div className="flex flex-col items-center justify-center w-12 shrink-0">
+                        <span className="text-2xl">{rankEmoji[i] || `#${bid.rank}`}</span>
+                        {isClosed && i === 0 && <span className="mt-1 text-[9px] font-black tracking-widest text-green-600 uppercase">Winner</span>}
+                      </div>
+
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-900 truncate">{bid.supplier_name}</p>
                         <p className="text-xs text-slate-500">{bid.carrier_name} · {bid.transit_time}d transit · {bid.quote_validity}d validity</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className={`font-extrabold ${i === 0 ? 'text-rose-600 text-lg' : 'text-slate-700'}`}>
+                        <p className={`font-extrabold ${i === 0 ? (isClosed ? 'text-green-600 text-lg' : 'text-rose-600 text-lg') : 'text-slate-700'}`}>
                           ₹{bid.total_charges.toLocaleString('en-IN')}
                         </p>
+
                         <p className="text-[11px] text-slate-400">
                           {bid.freight_charges.toLocaleString()} + {bid.origin_charges.toLocaleString()} + {bid.destination_charges.toLocaleString()}
                         </p>
@@ -224,16 +234,32 @@ function RFQAuction({ currentUser }) {
             </div>
           </div>
 
-          {/* Bid Form */}
+          {/* Bid Form / Winner Announcement */}
           <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-              <h2 className="font-bold text-slate-900">Place Your Bid</h2>
-
-              {isClosed && (
-                <div className="rounded-xl bg-slate-100 px-4 py-3 text-center text-sm font-semibold text-slate-500">
-                  Auction is closed
+            {isClosed ? (
+              <div className="rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm flex flex-col items-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl">
+                  🏆
                 </div>
-              )}
+                <h2 className="mb-1 text-2xl font-black text-green-800">Auction Closed</h2>
+                {bids.length > 0 ? (
+                  <>
+                    <p className="mb-6 text-sm text-green-600">
+                      The winning bid goes to:
+                    </p>
+                    <div className="w-full rounded-xl bg-white p-4 shadow-sm border border-green-100">
+                      <p className="font-bold text-slate-900 text-lg">{bids[0].supplier_name}</p>
+                      <p className="text-sm text-slate-500 mb-2">{bids[0].carrier_name}</p>
+                      <p className="text-xl font-extrabold text-green-600">₹{bids[0].total_charges.toLocaleString('en-IN')}</p>
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-green-600">No bids were placed during this auction.</p>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <h2 className="font-bold text-slate-900">Place Your Bid</h2>
 
               <div>
                 <label className="mb-1.5 block text-sm font-bold text-slate-700">Carrier Name</label>
@@ -264,13 +290,15 @@ function RFQAuction({ currentUser }) {
 
               <button
                 type="submit"
-                disabled={isLoading || isBuyer || isClosed}
+                disabled={isLoading || isBuyer}
                 className="w-full rounded-xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isBuyer ? 'Bidding Restricted for Buyers' : isClosed ? 'Auction Closed' : isLoading ? 'Submitting...' : 'Submit Bid'}
+                {isBuyer ? 'Bidding Restricted for Buyers' : isLoading ? 'Submitting...' : 'Submit Bid'}
               </button>
             </form>
+            )}
           </div>
+
         </div>
 
         <button onClick={() => navigate(-1)} className="mt-6 text-sm font-medium text-slate-400 hover:text-slate-600">

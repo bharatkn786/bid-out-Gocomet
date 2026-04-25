@@ -3,11 +3,15 @@ import Navbar from '../components/Navbar'
 import AuctionCard from '../components/AuctionCard'
 import Toast from '../components/Toast'
 import { listRFQs } from '../services/rfqApi'
+import { getMyBiddedRFQs } from '../services/bidApi'
 
 function Home({ currentUser, onLogoutClick }) {
   const [rfqs, setRfqs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [toast, setToast] = useState(null)
+  const [showOnlyMine, setShowOnlyMine] = useState(false)
+  const [myBiddedIds, setMyBiddedIds] = useState([])
+
 
   useEffect(() => {
     listRFQs()
@@ -24,9 +28,26 @@ function Home({ currentUser, onLogoutClick }) {
     return () => clearInterval(interval)
   }, [])
 
+  // Fetch seller's bid RFQ IDs
+  useEffect(() => {
+    if (currentUser?.role === 'seller') {
+      const token = localStorage.getItem('auth_token')
+      if (token) getMyBiddedRFQs(token).then(setMyBiddedIds).catch(console.error)
+    }
+  }, [currentUser])
+
   const now = new Date()
-  const liveRFQs = rfqs.filter(r => new Date(r.bid_start_at) <= now && new Date(r.bid_close_at) > now)
-  const upcomingRFQs = rfqs.filter(r => new Date(r.bid_start_at) > now)
+  
+  // Filter based on toggle
+  const filteredRFQs = showOnlyMine
+    ? rfqs.filter(r => currentUser?.role === 'buyer' ? r.created_by === currentUser.id : myBiddedIds.includes(r.id))
+    : rfqs;
+
+  const liveRFQs = filteredRFQs.filter(r => new Date(r.bid_start_at) <= now && new Date(r.bid_close_at) > now)
+  const upcomingRFQs = filteredRFQs.filter(r => new Date(r.bid_start_at) > now)
+  const closedRFQs = filteredRFQs.filter(r => new Date(r.bid_close_at) <= now)
+
+
 
   return (
     <div className="relative min-h-screen bg-slate-50 font-sans">
@@ -63,8 +84,24 @@ function Home({ currentUser, onLogoutClick }) {
         </div>
       </div>
 
+      {currentUser && (
+        <div className="flex justify-center -mt-6 relative z-20">
+          <button
+            onClick={() => setShowOnlyMine(!showOnlyMine)}
+            className={`rounded-full px-8 py-3 text-sm font-black tracking-wide transition-all shadow-md ${
+              showOnlyMine
+                ? 'bg-rose-500 text-white shadow-rose-500/40 ring-4 ring-white'
+                : 'bg-white text-slate-700 border border-slate-200 hover:border-rose-300 hover:text-rose-600'
+            }`}
+          >
+            {showOnlyMine ? 'Showing My Auctions' : currentUser.role === 'buyer' ? 'Show My RFQs' : 'Show My Bids'}
+          </button>
+        </div>
+      )}
+
       {/* Auctions Content */}
-      <main className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+
         {isLoading ? (
           <div className="text-slate-500 flex justify-center py-20">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-rose-500 border-t-transparent"></div>
@@ -106,14 +143,16 @@ function Home({ currentUser, onLogoutClick }) {
                       isLive={true} 
                       currentUser={currentUser}
                       setToast={setToast}
+                      hasBidded={myBiddedIds.includes(rfq.id)}
                     />
                   ))}
+
                 </div>
               )}
             </section>
 
             {/* Upcoming Auctions */}
-            <section>
+            <section className="mb-20">
               <div className="mb-10">
                 <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Upcoming Auctions</h2>
                 <p className="text-slate-600 text-sm sm:text-base max-w-2xl">
@@ -134,14 +173,48 @@ function Home({ currentUser, onLogoutClick }) {
                       isLive={false} 
                       currentUser={currentUser}
                       setToast={setToast}
+                      hasBidded={myBiddedIds.includes(rfq.id)}
                     />
                   ))}
+
+                </div>
+              )}
+            </section>
+
+            {/* Closed Auctions */}
+            <section>
+              <div className="mb-10">
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Closed Auctions</h2>
+                <p className="text-slate-600 text-sm sm:text-base max-w-2xl">
+                  Review past auctions and winning bids.
+                </p>
+              </div>
+
+              {closedRFQs.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                  No closed auctions yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-80">
+                  {closedRFQs.map(rfq => (
+                    <AuctionCard 
+                      key={rfq.id} 
+                      rfq={rfq} 
+                      isClosed={true}
+                      isLive={false}
+                      currentUser={currentUser}
+                      setToast={setToast}
+                      hasBidded={myBiddedIds.includes(rfq.id)}
+                    />
+                  ))}
+
                 </div>
               )}
             </section>
           </>
         )}
       </main>
+
     </div>
   )
 }

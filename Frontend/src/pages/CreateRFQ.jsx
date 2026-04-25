@@ -15,7 +15,7 @@ const initialForm = {
   trigger_type: 'bid_received',
 }
 
-function CreateRFQ({ currentUser }) {
+function CreateRFQ({ currentUser, onLogoutClick }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [error, setError] = useState('')
@@ -69,7 +69,7 @@ function CreateRFQ({ currentUser }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar currentUser={currentUser} />
+      <Navbar currentUser={currentUser} onLogoutClick={onLogoutClick} />
 
       <main className="mx-auto max-w-3xl px-4 py-10">
         <div className="mb-8">

@@ -17,3 +17,12 @@ export async function listBids(rfqId) {
   if (!res.ok) throw new Error(data.detail || 'Failed to fetch bids')
   return data
 }
+
+export async function getMyBiddedRFQs(token) {
+  const res = await fetch(`${API_BASE_URL}/bid/my-rfqs`, {
+    headers: authHeaders(token)
+  })
+  const data = await res.json().catch(() => ([]))
+  if (!res.ok) throw new Error(data.detail || 'Failed to fetch my bids')
+  return data
+}
