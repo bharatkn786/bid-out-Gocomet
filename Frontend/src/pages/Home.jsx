@@ -1,30 +1,151 @@
+import { useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
+import AuctionCard from '../components/AuctionCard'
+import Toast from '../components/Toast'
+import { listRFQs } from '../services/rfqApi'
 
 function Home({ currentUser, onLogoutClick }) {
+  const [rfqs, setRfqs] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    listRFQs()
+      .then(data => {
+        // Sort by start time descending or ascending as needed
+        setRfqs(data)
+      })
+      .catch(console.error)
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  // Auto-refresh every minute to move upcoming to live
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRfqs(prev => [...prev]) // Force re-render to recalculate live/upcoming
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const now = new Date()
+  const liveRFQs = rfqs.filter(r => new Date(r.bid_start_at) <= now && new Date(r.bid_close_at) > now)
+  const upcomingRFQs = rfqs.filter(r => new Date(r.bid_start_at) > now)
+  const closedRFQs = rfqs.filter(r => new Date(r.bid_close_at) <= now) // optional, keeping it simple
+
   return (
-    <div className="relative min-h-screen">
-      <video
-        className="fixed inset-0 z-0 h-screen w-screen object-cover"
-        src="/truck-logistics.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-      />
+    <div className="relative min-h-screen bg-slate-50 font-sans">
+      <Navbar currentUser={currentUser} onLogoutClick={onLogoutClick} />
+      
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
 
-      <div className="fixed inset-0 z-0 bg-slate-950/45" />
-
-      <div className="relative z-10">
-        <Navbar currentUser={currentUser} onLogoutClick={onLogoutClick} />
-
-        <main className="mx-auto flex h-[calc(100vh-80px)] w-full max-w-7xl items-end p-8 lg:p-16">
-          <section className="max-w-2xl">
-            <p className="text-sm uppercase tracking-[0.24em] text-white/80">Bid Out Logistics</p>
-            <h1 className="mt-2 text-4xl font-extrabold text-white lg:text-6xl">Move Freight Faster</h1>
-            
-          </section>
-        </main>
+      {/* Hero Section */}
+      <div className="relative flex h-[70vh] min-h-[500px] w-full items-center justify-center overflow-hidden">
+        <video
+          className="absolute inset-0 z-0 h-full w-full object-cover"
+          src="/truck-logistics.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+        <div className="absolute inset-0 z-0 bg-slate-950/60" />
+        
+        <div className="relative z-10 w-full max-w-7xl px-4 sm:px-6 lg:px-8 lg:pl-90">
+          <div className="max-w-2xl">
+            <p className="text-sm font-bold tracking-[0.2em] text-rose-400 uppercase">Bid Out Logistics</p>
+            <h1 className="mt-3 text-5xl font-extrabold text-white sm:text-6xl lg:text-7xl">Move Freight Faster</h1>
+            <p className="mt-6 text-lg text-slate-300 max-w-lg leading-relaxed">
+              Transparent, competitive auctions for logistics. Secure the best rates in real-time.
+            </p>
+          </div>
+        </div>
       </div>
+
+      {/* Auctions Content */}
+      <main className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        {isLoading ? (
+          <div className="text-slate-500 flex justify-center py-20">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-rose-500 border-t-transparent"></div>
+          </div>
+        ) : (
+          <>
+            {/* Live Auctions */}
+            <section className="mb-20">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                    </span>
+                    <h2 className="text-3xl font-extrabold text-slate-900">Live Auction</h2>
+                  </div>
+                  <p className="text-slate-600 text-sm sm:text-base">
+                    Discover competitive loads in our dynamic online auction. Bid now for a chance to win freight that promises to elevate your business.
+                  </p>
+                </div>
+                {liveRFQs.length > 0 && (
+                  <button className="shrink-0 rounded-full bg-rose-500 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-rose-600 shadow-sm shadow-rose-500/30">
+                    View all
+                  </button>
+                )}
+              </div>
+              
+              {liveRFQs.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                  No live auctions right now. Check back later!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {liveRFQs.map(rfq => (
+                    <AuctionCard 
+                      key={rfq.id} 
+                      rfq={rfq} 
+                      isLive={true} 
+                      currentUser={currentUser}
+                      setToast={setToast}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Upcoming Auctions */}
+            <section>
+              <div className="mb-10">
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Upcoming Auctions</h2>
+                <p className="text-slate-600 text-sm sm:text-base max-w-2xl">
+                  Plan ahead and prepare your bids for these future opportunities.
+                </p>
+              </div>
+
+              {upcomingRFQs.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                  No upcoming auctions scheduled.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {upcomingRFQs.map(rfq => (
+                    <AuctionCard 
+                      key={rfq.id} 
+                      rfq={rfq} 
+                      isLive={false} 
+                      currentUser={currentUser}
+                      setToast={setToast}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </main>
     </div>
   )
 }
