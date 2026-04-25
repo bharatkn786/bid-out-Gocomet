@@ -15,8 +15,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 @bid_router.post("/place", response_model=BidResponse)
-def place_bid(payload: CreateBidRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
-    return bid_service.place_bid(db, payload, user)
+async def place_bid(payload: CreateBidRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    return await bid_service.place_bid(db, payload, user)
 
 
 @bid_router.get("/list/{rfq_id}", response_model=list[BidResponse])

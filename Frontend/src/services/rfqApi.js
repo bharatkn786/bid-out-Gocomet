@@ -22,3 +22,10 @@ export async function listRFQs() {
   if (!res.ok) throw new Error(data.detail || 'Failed to fetch RFQs')
   return data
 }
+
+export async function getRFQDetail(rfqId) {
+  const res = await fetch(`${API_BASE_URL}/rfq/${rfqId}/detail`)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Failed to fetch auction detail')
+  return data
+}

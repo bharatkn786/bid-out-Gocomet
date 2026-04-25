@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.database.base import Base
 from app.database.session import engine
 from app.models.user import User  # noqa: F401
-from app.models.rfq import RFQ, AuctionConfig, Bid  # noqa: F401
+from app.models.rfq import RFQ, AuctionConfig, Bid, AuctionLog  # noqa: F401
 
 app = FastAPI(title=settings.app_name)
 

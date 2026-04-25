@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -35,10 +35,10 @@ class RFQ(Base):
     status: Mapped[RFQStatus] = mapped_column(Enum(RFQStatus, name="rfq_status"), default=RFQStatus.draft, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # Relationships
     creator = relationship("User", foreign_keys=[created_by])
     config = relationship("AuctionConfig", back_populates="rfq", uselist=False)
     bids = relationship("Bid", back_populates="rfq")
+    logs = relationship("AuctionLog", back_populates="rfq", order_by="AuctionLog.created_at")
 
 
 class AuctionConfig(Base):
@@ -63,14 +63,25 @@ class Bid(Base):
     freight_charges: Mapped[float] = mapped_column(Float, nullable=False)
     origin_charges: Mapped[float] = mapped_column(Float, nullable=False)
     destination_charges: Mapped[float] = mapped_column(Float, nullable=False)
-    transit_time: Mapped[int] = mapped_column(Integer, nullable=False)  # in days
-    quote_validity: Mapped[int] = mapped_column(Integer, nullable=False)  # in days
+    transit_time: Mapped[int] = mapped_column(Integer, nullable=False)
+    quote_validity: Mapped[int] = mapped_column(Integer, nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # Relationships
     rfq = relationship("RFQ", back_populates="bids")
     supplier = relationship("User", foreign_keys=[supplier_id])
 
     @property
     def total_charges(self) -> float:
         return self.freight_charges + self.origin_charges + self.destination_charges
+
+
+class AuctionLog(Base):
+    __tablename__ = "auction_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    rfq_id: Mapped[int] = mapped_column(Integer, ForeignKey("rfqs.id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "bid_placed" | "time_extended"
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    rfq = relationship("RFQ", back_populates="logs")

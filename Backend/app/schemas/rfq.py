@@ -4,8 +4,8 @@ from app.models.rfq import RFQStatus, TriggerType
 
 
 class AuctionConfigInput(BaseModel):
-    trigger_window_minutes: int = Field(gt=0, description="How many minutes before close to watch for bids")
-    extension_duration_minutes: int = Field(gt=0, description="How many minutes to extend if triggered")
+    trigger_window_minutes: int = Field(gt=0)
+    extension_duration_minutes: int = Field(gt=0)
     trigger_type: TriggerType
 
 
@@ -34,3 +34,41 @@ class RFQResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AuctionConfigResponse(BaseModel):
+    trigger_window_minutes: int
+    extension_duration_minutes: int
+    trigger_type: TriggerType
+
+    class Config:
+        from_attributes = True
+
+
+class BidRankItem(BaseModel):
+    rank: int
+    supplier_name: str
+    carrier_name: str
+    freight_charges: float
+    origin_charges: float
+    destination_charges: float
+    total_charges: float
+    transit_time: int
+    quote_validity: int
+    submitted_at: datetime
+
+
+class LogItem(BaseModel):
+    event_type: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AuctionDetailResponse(BaseModel):
+    rfq: RFQResponse
+    config: AuctionConfigResponse | None
+    bids: list[BidRankItem]
+    logs: list[LogItem]

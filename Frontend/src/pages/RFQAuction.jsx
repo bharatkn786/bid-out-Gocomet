@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Toast from '../components/Toast'
 import { placeBid } from '../services/bidApi'
+import { getRFQDetail } from '../services/rfqApi'
+import { API_BASE_URL } from '../services/api'
 
 const emptyForm = {
   carrier_name: '',
@@ -13,20 +15,73 @@ const emptyForm = {
   quote_validity: '',
 }
 
+// Countdown timer: counts down to bid_close_at
+function useCountdown(bid_close_at) {
+  const [timeLeft, setTimeLeft] = useState('')
+  useEffect(() => {
+    const tick = () => {
+      const diff = new Date(bid_close_at) - new Date()
+      if (diff <= 0) return setTimeLeft('CLOSED')
+      const m = Math.floor(diff / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimeLeft(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`)
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [bid_close_at])
+  return timeLeft
+}
+
 function RFQAuction({ currentUser }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [detail, setDetail] = useState(null)
   const [toast, setToast] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const wsRef = useRef(null)
 
   const isBuyer = currentUser?.role === 'buyer'
 
+  // Load auction detail
+  async function fetchDetail() {
+    try {
+      const data = await getRFQDetail(id)
+      setDetail(data)
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
+    }
+  }
+
+  // Initial load
+  useEffect(() => {
+    fetchDetail()
+  }, [id])
+
+  // WebSocket — reconnects when id changes
+  useEffect(() => {
+    const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
+    const ws = new WebSocket(`${wsUrl}/api/rfq/ws/${id}`)
+    wsRef.current = ws
+
+    ws.onmessage = () => fetchDetail()  // on any event, refresh data
+
+    ws.onerror = () => console.warn('WebSocket error')
+
+    return () => ws.close()
+  }, [id])
+
+  // Show buyer restriction toast on load
   useEffect(() => {
     if (isBuyer) {
-      setToast({ message: 'Buyers cannot place bids. Please create a seller account to place your bids.', type: 'error' })
+      setToast({ message: 'Buyers cannot place bids. Please create a seller account.', type: 'error' })
     }
   }, [isBuyer])
+
+  const timeLeft = useCountdown(detail?.rfq?.bid_close_at)
+  const isClosed = timeLeft === 'CLOSED'
+  const isRed = !isClosed && detail && (new Date(detail.rfq.bid_close_at) - new Date()) < 120000
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -35,7 +90,6 @@ function RFQAuction({ currentUser }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (isBuyer) return
-
     setIsLoading(true)
     try {
       const token = localStorage.getItem('auth_token')
@@ -57,78 +111,171 @@ function RFQAuction({ currentUser }) {
     }
   }
 
-  const inputClass = `w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all ${isBuyer ? 'bg-slate-50 cursor-not-allowed' : ''}`
+  const inputCls = `w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 transition-all ${isBuyer || isClosed ? 'bg-slate-50 cursor-not-allowed' : ''}`
+
+  if (!detail) return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+    </div>
+  )
+
+  const { rfq, config, bids, logs } = detail
+  const rankEmoji = ['🥇', '🥈', '🥉']
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar currentUser={currentUser} />
-
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      <main className="mx-auto max-w-4xl px-4 py-10">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold text-slate-900">Place Your Bid</h1>
-            <p className="mt-1 text-sm text-slate-500">RFQ ID: {id} • Submit your most competitive rates.</p>
-          </div>
-          <button onClick={() => navigate(-1)} className="text-sm font-medium text-slate-500 hover:text-slate-700">
-            ← Back to Auctions
-          </button>
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Carrier Name</label>
-                  <input name="carrier_name" type="text" required disabled={isBuyer} placeholder="e.g. Blue Dart Logistics" className={inputClass} value={form.carrier_name} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Freight Charges ($)</label>
-                  <input name="freight_charges" type="number" step="0.01" required disabled={isBuyer} placeholder="0.00" className={inputClass} value={form.freight_charges} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Origin Charges ($)</label>
-                  <input name="origin_charges" type="number" step="0.01" required disabled={isBuyer} placeholder="0.00" className={inputClass} value={form.origin_charges} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Destination Charges ($)</label>
-                  <input name="destination_charges" type="number" step="0.01" required disabled={isBuyer} placeholder="0.00" className={inputClass} value={form.destination_charges} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Transit Time (Days)</label>
-                  <input name="transit_time" type="number" required disabled={isBuyer} placeholder="e.g. 5" className={inputClass} value={form.transit_time} onChange={handleChange} />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Quote Validity (Days)</label>
-                  <input name="quote_validity" type="number" required disabled={isBuyer} placeholder="e.g. 30" className={inputClass} value={form.quote_validity} onChange={handleChange} />
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  disabled={isLoading || isBuyer}
-                  className="w-full rounded-xl bg-rose-500 py-4 text-center font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:bg-rose-600 hover:shadow-rose-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isBuyer ? 'Bidding Restricted for Buyers' : isLoading ? 'Submitting...' : 'Submit Bid'}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="mb-4 text-lg font-bold text-slate-900">Bidding Rules</h3>
-              <ul className="space-y-3 text-sm text-slate-600">
-                <li className="flex gap-2"><span className="text-rose-500 font-bold">•</span>Bids are binding and cannot be retracted.</li>
-                <li className="flex gap-2"><span className="text-rose-500 font-bold">•</span>Lowest total charges will rank highest (L1).</li>
-                <li className="flex gap-2"><span className="text-rose-500 font-bold">•</span>Extensions may apply if bids are received near closing.</li>
-              </ul>
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        {/* Header */}
+        <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{rfq.reference_id || `RFQ #${rfq.id}`}</p>
+              <h1 className="mt-1 text-2xl font-extrabold text-slate-900">{rfq.name}</h1>
+              {rfq.description && <p className="mt-1 text-sm text-slate-500">{rfq.description}</p>}
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-slate-400">Closes in</p>
+              <p className={`text-4xl font-black tabular-nums ${isClosed ? 'text-slate-400' : isRed ? 'text-rose-600 animate-pulse' : 'text-slate-800'}`}>
+                {timeLeft || '—'}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Forced close: {new Date(rfq.forced_close_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
             </div>
           </div>
+          {config && (
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Trigger window: {config.trigger_window_minutes} min
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Extension: +{config.extension_duration_minutes} min
+              </span>
+              <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600 border border-rose-100">
+                {config.trigger_type.replace(/_/g, ' ')}
+              </span>
+            </div>
+          )}
         </div>
+
+        <div className="grid gap-8 lg:grid-cols-5">
+          {/* Rankings */}
+          <div className="lg:col-span-3 space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-6 py-4">
+                <span className="relative flex h-2.5 w-2.5">
+                  {!isClosed && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />}
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isClosed ? 'bg-slate-300' : 'bg-rose-500'}`} />
+                </span>
+                <h2 className="font-bold text-slate-900">Supplier Rankings</h2>
+                <span className="ml-auto text-xs text-slate-400">{bids.length} supplier{bids.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {bids.length === 0 ? (
+                <div className="px-6 py-10 text-center text-sm text-slate-400">No bids yet. Be the first!</div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {bids.map((bid, i) => (
+                    <div key={i} className={`flex items-center gap-4 px-6 py-4 ${i === 0 ? 'bg-rose-50/50' : ''}`}>
+                      <span className="text-2xl">{rankEmoji[i] || `#${bid.rank}`}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-900 truncate">{bid.supplier_name}</p>
+                        <p className="text-xs text-slate-500">{bid.carrier_name} · {bid.transit_time}d transit · {bid.quote_validity}d validity</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`font-extrabold ${i === 0 ? 'text-rose-600 text-lg' : 'text-slate-700'}`}>
+                          ₹{bid.total_charges.toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {bid.freight_charges.toLocaleString()} + {bid.origin_charges.toLocaleString()} + {bid.destination_charges.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Activity Log */}
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="border-b border-slate-100 px-6 py-4">
+                <h2 className="font-bold text-slate-900">Activity Log</h2>
+              </div>
+              {logs.length === 0 ? (
+                <div className="px-6 py-8 text-center text-sm text-slate-400">No activity yet.</div>
+              ) : (
+                <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                  {[...logs].reverse().map((log, i) => (
+                    <div key={i} className="flex items-start gap-3 px-6 py-3">
+                      <span className="mt-0.5 text-base">{log.event_type === 'time_extended' ? '⏱' : '●'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700">{log.message}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {new Date(log.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bid Form */}
+          <div className="lg:col-span-2">
+            <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h2 className="font-bold text-slate-900">Place Your Bid</h2>
+
+              {isClosed && (
+                <div className="rounded-xl bg-slate-100 px-4 py-3 text-center text-sm font-semibold text-slate-500">
+                  Auction is closed
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-sm font-bold text-slate-700">Carrier Name</label>
+                <input name="carrier_name" type="text" required disabled={isBuyer || isClosed} placeholder="e.g. Blue Dart" className={inputCls} value={form.carrier_name} onChange={handleChange} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Freight ($)</label>
+                  <input name="freight_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.freight_charges} onChange={handleChange} />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Origin ($)</label>
+                  <input name="origin_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.origin_charges} onChange={handleChange} />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Destination ($)</label>
+                  <input name="destination_charges" type="number" step="0.01" required disabled={isBuyer || isClosed} placeholder="0.00" className={inputCls} value={form.destination_charges} onChange={handleChange} />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Transit (days)</label>
+                  <input name="transit_time" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 5" className={inputCls} value={form.transit_time} onChange={handleChange} />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-bold text-slate-700">Quote Validity (days)</label>
+                <input name="quote_validity" type="number" required disabled={isBuyer || isClosed} placeholder="e.g. 30" className={inputCls} value={form.quote_validity} onChange={handleChange} />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading || isBuyer || isClosed}
+                className="w-full rounded-xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBuyer ? 'Bidding Restricted for Buyers' : isClosed ? 'Auction Closed' : isLoading ? 'Submitting...' : 'Submit Bid'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <button onClick={() => navigate(-1)} className="mt-6 text-sm font-medium text-slate-400 hover:text-slate-600">
+          ← Back to Auctions
+        </button>
       </main>
     </div>
   )

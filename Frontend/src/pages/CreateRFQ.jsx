@@ -30,21 +30,17 @@ function CreateRFQ({ currentUser }) {
     e.preventDefault()
     setError('')
 
-    // Frontend validation
     if (new Date(form.forced_close_at) <= new Date(form.bid_close_at)) {
-      setError('Forced close time must be later than bid close time')
-      return
+      return setError('Forced close time must be later than bid close time')
     }
     if (new Date(form.bid_close_at) <= new Date(form.bid_start_at)) {
-      setError('Bid close time must be later than bid start time')
-      return
+      return setError('Bid close time must be later than bid start time')
     }
 
     setIsLoading(true)
-
     try {
       const token = localStorage.getItem('auth_token')
-      const payload = {
+      await createRFQ({
         name: form.name,
         description: form.description,
         bid_start_at: new Date(form.bid_start_at).toISOString(),
@@ -56,26 +52,16 @@ function CreateRFQ({ currentUser }) {
           extension_duration_minutes: Number(form.extension_duration_minutes),
           trigger_type: form.trigger_type,
         },
-      }
-      
-      console.log('Sending RFQ Payload:', payload)
-      await createRFQ(payload, token)
+      }, token)
       navigate('/')
     } catch (err) {
-      console.error('RFQ Creation Error:', err)
-      
-      // Try to parse validation errors if it's a JSON string from our improved API helper
       try {
         const details = JSON.parse(err.message)
         if (Array.isArray(details)) {
-          const messages = details.map(d => `${d.loc[d.loc.length - 1]}: ${d.msg}`)
-          setError(`Validation Error: ${messages.join(', ')}`)
-        } else {
-          setError(err.message)
+          return setError(`Validation Error: ${details.map(d => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(', ')}`)
         }
-      } catch {
-        setError(err.message)
-      }
+      } catch {}
+      setError(err.message)
     } finally {
       setIsLoading(false)
     }
