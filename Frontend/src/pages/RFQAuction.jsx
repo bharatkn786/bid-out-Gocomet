@@ -32,8 +32,9 @@ function buildBidPayload(form, rfqId) {
   }
 }
 
-function isAuctionClosed(detail, timeLeft) {
-  return timeLeft === 'CLOSED' || (detail && new Date(detail.rfq.bid_close_at) <= new Date())
+function isAuctionClosed(detail) {
+  const status = detail?.rfq?.status
+  return status === 'closed' || status === 'force_closed'
 }
 
 function isClosingSoon(detail, isClosed) {
@@ -84,13 +85,21 @@ function RFQAuction({ currentUser, onLogoutClick }) {
     fetchDetail()
   }, [id])
 
-  // WebSocket — reconnects when id changes
+  // WebSocket — update from payload (no extra HTTP)
   useEffect(() => {
-    // Construct ws://localhost:8000/api/rfq/ws/8
     const ws = new WebSocket(buildWsUrl(id))
 
     wsRef.current = ws
-    ws.onmessage = () => fetchDetail()
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message?.type === 'detail_update' && message.data) {
+          setDetail(message.data)
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err)
+      }
+    }
     ws.onerror = () => console.warn('WebSocket error connection to:', ws.url)
 
     return () => {
@@ -102,7 +111,7 @@ function RFQAuction({ currentUser, onLogoutClick }) {
 
   const timeLeft = useCountdown(detail?.rfq?.bid_close_at)
   // Check synchronously so it doesn't wait for the useEffect tick
-  const isClosed = isAuctionClosed(detail, timeLeft)
+  const isClosed = isAuctionClosed(detail)
   const isRed = isClosingSoon(detail, isClosed)
 
   // Show buyer restriction toast on load, only if auction is active

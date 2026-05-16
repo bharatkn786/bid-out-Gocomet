@@ -40,12 +40,16 @@ def list_rfqs(db: Session = Depends(get_db)):
 @rfq_router.get("/{rfq_id}", response_model=RFQResponse)
 def get_rfq(rfq_id: int, db: Session = Depends(get_db)):
     rfq = get_rfq_or_404(db, rfq_id)
+    if rfq_service.update_rfq_status(db, rfq):
+        db.commit()
     return RFQResponse.model_validate(rfq)
 
 
 @rfq_router.get("/{rfq_id}/detail", response_model=AuctionDetailResponse)
 def get_rfq_detail(rfq_id: int, db: Session = Depends(get_db)):
     rfq = get_rfq_or_404(db, rfq_id)
+    if rfq_service.update_rfq_status(db, rfq):
+        db.commit()
 
     # Build ranked bids: best bid per supplier, sorted by total_charges.
     all_bids = db.query(Bid).filter(Bid.rfq_id == rfq_id).all()

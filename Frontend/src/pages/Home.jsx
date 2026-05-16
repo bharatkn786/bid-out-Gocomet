@@ -5,16 +5,16 @@ import Toast from '../components/Toast'
 import { listRFQs } from '../services/rfqApi'
 import { getMyBiddedRFQs } from '../services/bidApi'
 
-function isLive(rfq, now) {
-  return new Date(rfq.bid_start_at) <= now && new Date(rfq.bid_close_at) > now
+function isLive(rfq) {
+  return rfq.status === 'active'
 }
 
-function isUpcoming(rfq, now) {
-  return new Date(rfq.bid_start_at) > now
+function isUpcoming(rfq) {
+  return rfq.status === 'draft'
 }
 
-function isClosed(rfq, now) {
-  return new Date(rfq.bid_close_at) <= now
+function isClosed(rfq) {
+  return rfq.status === 'closed' || rfq.status === 'force_closed'
 }
 
 function Home({ currentUser, onLogoutClick }) {
@@ -31,10 +31,10 @@ function Home({ currentUser, onLogoutClick }) {
       .finally(() => setIsLoading(false))
   }, [])
 
-  // Auto-refresh every minute to move upcoming to live
+  // Auto-refresh every minute to keep status in sync with backend
   useEffect(() => {
     const interval = setInterval(() => {
-      setRfqs(prev => [...prev]) // Force re-render to recalculate live/upcoming
+      listRFQs().then(setRfqs).catch(console.error)
     }, 60000)
     return () => clearInterval(interval)
   }, [])
@@ -47,14 +47,13 @@ function Home({ currentUser, onLogoutClick }) {
     }
   }, [currentUser])
 
-  const now = new Date()
   const filteredRFQs = showOnlyMine
     ? rfqs.filter(r => currentUser?.role === 'buyer' ? r.created_by === currentUser.id : myBiddedIds.includes(r.id))
     : rfqs
 
-  const liveRFQs = filteredRFQs.filter(r => isLive(r, now))
-  const upcomingRFQs = filteredRFQs.filter(r => isUpcoming(r, now))
-  const closedRFQs = filteredRFQs.filter(r => isClosed(r, now))
+  const liveRFQs = filteredRFQs.filter(r => isLive(r))
+  const upcomingRFQs = filteredRFQs.filter(r => isUpcoming(r))
+  const closedRFQs = filteredRFQs.filter(r => isClosed(r))
 
   return (
     <div className="relative min-h-screen bg-slate-50 font-sans">

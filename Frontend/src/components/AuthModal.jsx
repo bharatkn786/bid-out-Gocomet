@@ -10,8 +10,8 @@ const initialForm = {
 function AuthModal({ mode, onClose, onSubmit, isLoading, error }) {
   const [form, setForm] = useState(initialForm)
   const isSignup = mode === 'signup'
-
-  const title = useMemo(() => (isSignup ? 'Create account' : 'Welcome back'), [isSignup])
+  
+  const title = isSignup ? 'Create account' : 'Welcome back'
 
   function handleChange(event) {
     const { name, value } = event.target

@@ -91,7 +91,8 @@ def get_user_by_token(db: Session, token: str) -> User:
         
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: str | None = payload.get("sub")
+        user_id: str | None = payload.get("sub")       
+        # The "sub" field inside the token contains the user ID. this is subject and it lies in the payload of  the jwt
         if user_id is None:
             raise ValueError("Token missing user ID")
     except JWTError as e:

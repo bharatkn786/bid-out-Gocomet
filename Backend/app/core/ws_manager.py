@@ -1,6 +1,7 @@
 from typing import Iterable
 
 from fastapi import WebSocket
+from fastapi.encoders import jsonable_encoder
 
 
 class ConnectionManager:
@@ -22,7 +23,7 @@ class ConnectionManager:
     async def broadcast(self, rfq_id: int, message: dict):
         for ws in self.get_connections(rfq_id):
             try:
-                await ws.send_json(message)
+                await ws.send_json(jsonable_encoder(message))
             except Exception:
                 pass
 

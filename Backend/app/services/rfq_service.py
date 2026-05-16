@@ -1,8 +1,29 @@
+
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.rfq import AuctionConfig, RFQ, RFQStatus
 from app.schemas.rfq import CreateRFQRequest, RFQResponse
+
+
+def _compute_rfq_status(rfq: RFQ, now: datetime) -> RFQStatus:
+    if now >= rfq.forced_close_at:
+        return RFQStatus.force_closed
+    if now >= rfq.bid_close_at:
+        return RFQStatus.closed
+    if now >= rfq.bid_start_at:
+        return RFQStatus.active
+    return RFQStatus.draft
+
+
+def update_rfq_status(db: Session, rfq: RFQ, now: datetime | None = None) -> bool:
+    current_time = now or datetime.now(timezone.utc)
+    new_status = _compute_rfq_status(rfq, current_time)
+    if rfq.status != new_status:
+        rfq.status = new_status
+        return True
+    return False
 
 
 def validate_rfq_times(payload: CreateRFQRequest) -> None:
@@ -45,10 +66,16 @@ def create_rfq(db: Session, payload: CreateRFQRequest, buyer_id: int) -> RFQResp
 
 def list_rfqs(db: Session) -> list[RFQResponse]:
     rfqs = db.query(RFQ).order_by(RFQ.created_at.desc()).all()
+    now = datetime.now(timezone.utc)
+    changed = False
     results = []
     for r in rfqs:
+        if update_rfq_status(db, r, now):
+            changed = True
         resp = RFQResponse.model_validate(r)
         if r.bids:
             resp.current_lowest_bid = min(b.total_charges for b in r.bids)
         results.append(resp)
+    if changed:
+        db.commit()
     return results
