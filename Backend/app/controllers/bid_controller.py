@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.rfq import Bid
+from app.models.user import UserRole
 from app.schemas.bid import CreateBidRequest, BidResponse
 from app.services import auth_service, bid_service
 
@@ -13,6 +14,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     return auth_service.get_user_by_token(db, token)
+
+
+def get_current_admin(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    user = auth_service.get_user_by_token(db, token)
+    if user.role != UserRole.admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
+    return user
 
 
 @bid_router.post("/place", response_model=BidResponse)
@@ -27,6 +35,12 @@ async def place_bid(
 @bid_router.get("/list/{rfq_id}", response_model=list[BidResponse])
 def list_bids(rfq_id: int, db: Session = Depends(get_db)):
     return bid_service.list_bids_for_rfq(db, rfq_id)
+
+
+@bid_router.delete("/{bid_id}")
+def delete_bid(bid_id: int, admin=Depends(get_current_admin), db: Session = Depends(get_db)):
+    bid_service.delete_bid(db, bid_id)
+    return {"status": "deleted", "bid_id": bid_id}
 
 @bid_router.get("/my-rfqs", response_model=list[int])
 def get_my_bidded_rfqs(user=Depends(get_current_user), db: Session = Depends(get_db)):

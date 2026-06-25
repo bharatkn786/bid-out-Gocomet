@@ -33,7 +33,7 @@ function Nav({ currentUser, onLogoutClick }) {
           <Link className="transition-colors hover:text-rose-500" to="/">Home</Link>
           <a className="transition-colors hover:text-rose-500" href="#">Auctions</a>
           <a className="transition-colors hover:text-rose-500" href="#">Contact</a>
-          {(!currentUser || currentUser.role === 'buyer') && (
+          {(!currentUser || currentUser.role === 'buyer' || currentUser.role === 'admin') && (
             <Link
               to="/rfq/create"
               onClick={handleRequestQuotation}

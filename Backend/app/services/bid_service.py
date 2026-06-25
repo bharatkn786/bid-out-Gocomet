@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
-from app.core.ws_manager import manager
+from app.core.socket_manager import sio
 from app.models.rfq import AuctionLog, Bid, RFQ, TriggerType
 from app.models.user import UserRole, User
 from app.schemas.bid import CreateBidRequest, BidResponse
@@ -86,10 +87,10 @@ def _try_extend(db: Session,rfq: RFQ,new_bid: Bid,old_l1_id: int | None,old_rank
 
 
 async def place_bid(db: Session, payload: CreateBidRequest, user: User) -> BidResponse:
-    if user.role == UserRole.buyer:
+    if user.role not in (UserRole.seller, UserRole.admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Buyers cannot place bids. Please create a seller account to place your bids."
+            detail="Only sellers or admins can place bids. Please create a seller account to place your bids."
         )
 
     rfq = db.query(RFQ).filter(RFQ.id == payload.rfq_id).first()
@@ -131,10 +132,9 @@ async def place_bid(db: Session, payload: CreateBidRequest, user: User) -> BidRe
     db.refresh(bid)
 
     # Notify all connected clients for this RFQ with full detail
-    await manager.broadcast(rfq.id, {
-        "type": "detail_update",
-        "data": _build_detail_payload(db, rfq),
-    })
+    payload = jsonable_encoder(_build_detail_payload(db, rfq))
+    #ebsocket connection
+    await sio.emit("detail_update", payload, room=f"rfq:{rfq.id}")
 
     return BidResponse.model_validate(bid)
 
@@ -142,3 +142,11 @@ async def place_bid(db: Session, payload: CreateBidRequest, user: User) -> BidRe
 def list_bids_for_rfq(db: Session, rfq_id: int) -> list[BidResponse]:
     bids = db.query(Bid).filter(Bid.rfq_id == rfq_id).order_by(Bid.submitted_at.desc()).all()
     return [BidResponse.model_validate(b) for b in bids]
+
+
+def delete_bid(db: Session, bid_id: int) -> None:
+    bid = db.query(Bid).filter(Bid.id == bid_id).first()
+    if not bid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bid not found")
+    db.delete(bid)
+    db.commit()

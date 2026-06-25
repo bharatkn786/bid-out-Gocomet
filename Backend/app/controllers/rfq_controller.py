@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from app.core.ws_manager import manager
 from app.database.session import get_db
 from app.models.rfq import Bid, RFQ
 from app.models.user import UserRole
@@ -15,8 +14,15 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def get_current_buyer(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     user = auth_service.get_user_by_token(db, token)
-    if user.role != UserRole.buyer:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only buyers can perform this action")
+    if user.role not in (UserRole.buyer, UserRole.admin):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only buyers or admins can perform this action")
+    return user
+
+
+def get_current_admin(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    user = auth_service.get_user_by_token(db, token)
+    if user.role != UserRole.admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
     return user
 
 
@@ -43,6 +49,18 @@ def get_rfq(rfq_id: int, db: Session = Depends(get_db)):
     if rfq_service.update_rfq_status(db, rfq):
         db.commit()
     return RFQResponse.model_validate(rfq)
+
+
+@rfq_router.delete("/{rfq_id}")
+def delete_rfq(rfq_id: int, admin=Depends(get_current_admin), db: Session = Depends(get_db)):
+    rfq_service.delete_rfq(db, rfq_id)
+    return {"status": "deleted", "rfq_id": rfq_id}
+
+
+@rfq_router.post("/{rfq_id}/close")
+def close_rfq(rfq_id: int, admin=Depends(get_current_admin), db: Session = Depends(get_db)):
+    rfq_service.force_close_rfq(db, rfq_id)
+    return {"status": "closed", "rfq_id": rfq_id}
 
 
 @rfq_router.get("/{rfq_id}/detail", response_model=AuctionDetailResponse)
@@ -83,11 +101,3 @@ def get_rfq_detail(rfq_id: int, db: Session = Depends(get_db)):
     )
 
 
-@rfq_router.websocket("/ws/{rfq_id}")
-async def websocket_endpoint(websocket: WebSocket, rfq_id: int):
-    await manager.connect(rfq_id, websocket)
-    try:
-        while True:
-            await websocket.receive_text()  # Keep connection alive
-    except WebSocketDisconnect:
-        manager.disconnect(rfq_id, websocket)

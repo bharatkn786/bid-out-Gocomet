@@ -29,3 +29,13 @@ export async function getRFQDetail(rfqId) {
   if (!res.ok) throw new Error(data.detail || 'Failed to fetch auction detail')
   return data
 }
+
+export async function closeRFQ(rfqId, token) {
+  const res = await fetch(`${API_BASE_URL}/rfq/${rfqId}/close`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Failed to close auction')
+  return data
+}

@@ -1,0 +1,22 @@
+{
+  "name": "bid-out-gocomet",
+  "version": "1.0.0",
+  "description": "A full-stack RFQ and bidding platform for logistics auctions. Buyers publish RFQs, sellers place bids in real time, and auctions extend automatically based on configurable rules.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bharatkn786/bid-out-Gocomet.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bharatkn786/bid-out-Gocomet/issues"
+  },
+  "homepage": "https://github.com/bharatkn786/bid-out-Gocomet#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.0.1"
+  }
+}

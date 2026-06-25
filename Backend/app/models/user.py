@@ -10,6 +10,7 @@ from app.database.base import Base
 class UserRole(enum.Enum):
     buyer = "buyer"
     seller = "seller"
+    admin = "admin"
 
 
 # -------- USER TABLE --------

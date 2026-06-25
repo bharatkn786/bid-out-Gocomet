@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { io } from 'socket.io-client'
 import Navbar from '../components/Navbar'
 import Toast from '../components/Toast'
-import { placeBid } from '../services/bidApi'
-import { getRFQDetail } from '../services/rfqApi'
+import { deleteBid, listBids, placeBid } from '../services/bidApi'
+import { closeRFQ, getRFQDetail } from '../services/rfqApi'
 import { API_BASE_URL } from '../services/api'
 
 const emptyForm = {
@@ -15,9 +16,8 @@ const emptyForm = {
   quote_validity: '',
 }
 
-function buildWsUrl(rfqId) {
-  const wsBaseUrl = API_BASE_URL.replace('http', 'ws')
-  return `${wsBaseUrl}/rfq/ws/${rfqId}`
+function getSocketBaseUrl() {
+  return API_BASE_URL.replace(/\/api\/?$/, '')
 }
 
 function buildBidPayload(form, rfqId) {
@@ -43,20 +43,34 @@ function isClosingSoon(detail, isClosed) {
 
 // Countdown timer: counts down to bid_close_at
 function useCountdown(bid_close_at) {
-  const [timeLeft, setTimeLeft] = useState('')
+  const [timeLeft, setTimeLeft] = useState('');
+
   useEffect(() => {
     const tick = () => {
-      const diff = new Date(bid_close_at) - new Date()
-      if (diff <= 0) return setTimeLeft('CLOSED')
-      const m = Math.floor(diff / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setTimeLeft(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`)
-    }
-    tick()
-    const t = setInterval(tick, 1000)
-    return () => clearInterval(t)
-  }, [bid_close_at])
-  return timeLeft
+      const diff = new Date(bid_close_at) - new Date();
+
+      if (diff <= 0) {
+        setTimeLeft('CLOSED');
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft(
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      );
+    };
+
+    tick();
+
+    const timer = setInterval(tick, 1000);
+
+    return () => clearInterval(timer);
+  }, [bid_close_at]);
+
+  return timeLeft;
 }
 
 function RFQAuction({ currentUser, onLogoutClick }) {
@@ -66,9 +80,11 @@ function RFQAuction({ currentUser, onLogoutClick }) {
   const [toast, setToast] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [form, setForm] = useState(emptyForm)
-  const wsRef = useRef(null)
+  const [adminBids, setAdminBids] = useState([])
+  const socketRef = useRef(null)
 
   const isBuyer = currentUser?.role === 'buyer'
+  const isAdmin = currentUser?.role === 'admin'
 
   // Load auction detail
   async function fetchDetail() {
@@ -80,32 +96,44 @@ function RFQAuction({ currentUser, onLogoutClick }) {
     }
   }
 
+  async function fetchAdminBids() {
+    try {
+      const data = await listBids(id)
+      setAdminBids(data)
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
+    }
+  }
+
   // Initial load
   useEffect(() => {
     fetchDetail()
   }, [id])
 
-  // WebSocket — update from payload (no extra HTTP)
   useEffect(() => {
-    const ws = new WebSocket(buildWsUrl(id))
+    if (isAdmin) fetchAdminBids()
+  }, [id, isAdmin])
 
-    wsRef.current = ws
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message?.type === 'detail_update' && message.data) {
-          setDetail(message.data)
-        }
-      } catch (err) {
-        console.error('Failed to parse WebSocket message:', err)
-      }
-    }
-    ws.onerror = () => console.warn('WebSocket error connection to:', ws.url)
+  // Socket.IO room updates
+  useEffect(() => {
+    const socket = io(getSocketBaseUrl(), {
+      transports: ['websocket'],
+    })
+    socketRef.current = socket
+
+    const roomPayload = { rfq_id: Number(id) }
+    const handleConnect = () => socket.emit('join_room', roomPayload)
+
+    socket.on('connect', handleConnect)
+    socket.on('detail_update', (data) => {
+      if (data) setDetail(data)
+    })
+    socket.on('connect_error', () => console.warn('Socket.IO connection error'))
 
     return () => {
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-        ws.close()
-      }
+      socket.off('connect', handleConnect)
+      socket.emit('leave_room', roomPayload)
+      socket.disconnect()
     }
   }, [id])
 
@@ -134,10 +162,36 @@ function RFQAuction({ currentUser, onLogoutClick }) {
       await placeBid(buildBidPayload(form, id), token)
       setToast({ message: 'Bid placed successfully!', type: 'success' })
       setForm(emptyForm)
+      if (isAdmin) await fetchAdminBids()
     } catch (err) {
       setToast({ message: err.message, type: 'error' })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleAdminClose() {
+    if (!window.confirm('Force close this auction now?')) return
+    try {
+      const token = localStorage.getItem('auth_token')
+      await closeRFQ(id, token)
+      setToast({ message: 'Auction force-closed.', type: 'success' })
+      await fetchDetail()
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
+    }
+  }
+
+  async function handleAdminDeleteBid(bidId) {
+    if (!window.confirm('Delete this bid?')) return
+    try {
+      const token = localStorage.getItem('auth_token')
+      await deleteBid(bidId, token)
+      setToast({ message: 'Bid deleted.', type: 'success' })
+      await fetchAdminBids()
+      await fetchDetail()
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
     }
   }
 
@@ -187,6 +241,18 @@ function RFQAuction({ currentUser, onLogoutClick }) {
               <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600 border border-rose-100">
                 {config.trigger_type.replace(/_/g, ' ')}
               </span>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={handleAdminClose}
+                disabled={isClosed}
+                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold uppercase tracking-wide text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Force Close Auction
+              </button>
             </div>
           )}
         </div>
@@ -257,6 +323,37 @@ function RFQAuction({ currentUser, onLogoutClick }) {
                 </div>
               )}
             </div>
+
+            {isAdmin && (
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-6 py-4">
+                  <h2 className="font-bold text-slate-900">Admin: All Bids</h2>
+                  <span className="ml-auto text-xs text-slate-400">{adminBids.length} bid{adminBids.length !== 1 ? 's' : ''}</span>
+                </div>
+                {adminBids.length === 0 ? (
+                  <div className="px-6 py-8 text-center text-sm text-slate-400">No bids to manage.</div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {adminBids.map((bid) => (
+                      <div key={bid.id} className="flex flex-wrap items-center gap-3 px-6 py-3">
+                        <div className="min-w-[110px] text-sm font-semibold text-slate-700">Bid #{bid.id}</div>
+                        <div className="flex-1 min-w-[160px] text-xs text-slate-500">
+                          Supplier {bid.supplier_id} · {bid.carrier_name}
+                        </div>
+                        <div className="text-sm font-bold text-slate-800">₹{bid.total_charges.toLocaleString('en-IN')}</div>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDeleteBid(bid.id)}
+                          className="ml-auto rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-rose-700 transition hover:bg-rose-100"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bid Form / Winner Announcement */}

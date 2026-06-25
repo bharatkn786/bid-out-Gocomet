@@ -197,11 +197,11 @@ The WebSocket connection is **room-scoped** — `ConnectionManager` maintains `d
 1.  User opens browser  →  React SPA loads
 2.  User logs in        →  POST /api/auth/login  →  JWT returned  →  stored in memory
 3.  Home page           →  GET /api/rfq/list     →  renders RFQ cards (lowest bid, forced-close)
-4.  Enter Auction Room  →  WS opens  →  ws://.../api/rfq/ws/{rfq_id}
+4.  Enter Auction Room  →  Socket.IO connects  →  join room `rfq:{rfq_id}`
 5.  Seller submits bid  →  POST /api/bid/place
-        └─ bid_service validates window, saves bid, evaluates extension
-        └─ broadcast({ type: "new_bid" }) to all WS clients in room
-6.  All clients receive push  →  re-fetch /api/rfq/{id}/detail  →  UI refreshes leaderboard
+    └─ bid_service validates window, saves bid, evaluates extension
+    └─ emit("detail_update") to all Socket.IO clients in room
+6.  All clients receive push  →  UI refreshes leaderboard
 7.  All data (bids, logs, time changes) persisted in the database
 ```
 
@@ -216,7 +216,7 @@ The WebSocket connection is **room-scoped** — `ConnectionManager` maintains `d
 | ORM | SQLAlchemy 2.x |
 | Database | SQLite (dev) / PostgreSQL (prod-ready) |
 | Auth | JWT (HS256) + bcrypt + OTP via email |
-| Real-time | FastAPI WebSocket + ConnectionManager |
+| Real-time | Socket.IO rooms |
 | Email | fastapi-mail + Gmail SMTP (STARTTLS) |
 | Config | pydantic-settings + `.env` |
 

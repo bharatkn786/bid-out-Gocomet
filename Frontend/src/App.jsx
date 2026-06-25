@@ -47,7 +47,7 @@ function App() {
           element={
             !currentUser ? (
               <Navigate to="/login" replace />
-            ) : currentUser.role === 'buyer' ? (
+            ) : currentUser.role === 'buyer' || currentUser.role === 'admin' ? (
               <CreateRFQ currentUser={currentUser} onLogoutClick={handleLogout} />
             ) : (
               <Navigate to="/" replace />

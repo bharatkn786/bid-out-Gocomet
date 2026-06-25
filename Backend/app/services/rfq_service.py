@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.rfq import AuctionConfig, RFQ, RFQStatus
+from app.models.rfq import AuctionConfig, AuctionLog, Bid, RFQ, RFQStatus
 from app.schemas.rfq import CreateRFQRequest, RFQResponse
 
 
@@ -79,3 +79,31 @@ def list_rfqs(db: Session) -> list[RFQResponse]:
     if changed:
         db.commit()
     return results
+
+
+def delete_rfq(db: Session, rfq_id: int) -> None:
+    rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
+    if not rfq:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
+    db.query(Bid).filter(Bid.rfq_id == rfq_id).delete()
+    db.query(AuctionLog).filter(AuctionLog.rfq_id == rfq_id).delete()
+    db.query(AuctionConfig).filter(AuctionConfig.rfq_id == rfq_id).delete()
+    db.delete(rfq)
+    db.commit()
+
+
+def force_close_rfq(db: Session, rfq_id: int) -> None:
+    rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
+    if not rfq:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "RFQ not found")
+
+    now = datetime.now(timezone.utc)
+    rfq.bid_close_at = now
+    rfq.forced_close_at = now
+    rfq.status = RFQStatus.force_closed
+    db.add(AuctionLog(
+        rfq_id=rfq.id,
+        event_type="force_closed",
+        message="RFQ force-closed by admin"
+    ))
+    db.commit()

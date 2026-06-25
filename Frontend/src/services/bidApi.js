@@ -18,6 +18,16 @@ export async function listBids(rfqId) {
   return data
 }
 
+export async function deleteBid(bidId, token) {
+  const res = await fetch(`${API_BASE_URL}/bid/${bidId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Failed to delete bid')
+  return data
+}
+
 export async function getMyBiddedRFQs(token) {
   const res = await fetch(`${API_BASE_URL}/bid/my-rfqs`, {
     headers: authHeaders(token)

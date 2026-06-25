@@ -237,7 +237,7 @@ Frontend API base is currently set in `Frontend/src/services/api.js`.
 - `GET /api/bid/my-rfqs`
 
 ## Notes
-- WebSocket endpoint: `/api/rfq/ws/{rfq_id}`
+- Real-time updates use Socket.IO rooms (default `/socket.io` endpoint)
 - OTP is sent via configured SMTP settings
 
 ## License
